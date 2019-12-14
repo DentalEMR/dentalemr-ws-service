@@ -7,8 +7,9 @@ A Windows Service / Console app that hosts a Kestrel websocket (SignalR) server:
 
 ## Binary Invoker
 
-Endpoint: `http://127.0.0.1:5000/demr`
-CORS Setting (https://github.com/DentalEMR/dentalemr-ws-service/blob/master/DemrService/Startup.cs#L35): `https://localhost:44384`
+- Endpoint: `http://127.0.0.1:5000/demr`
+
+- CORS Setting (https://github.com/DentalEMR/dentalemr-ws-service/blob/master/DemrService/Startup.cs#L35): `https://localhost:44384`
 (Note: cors setting set for TestWebApp (below). For production use change to origin of client hosting signalr client library.)
 
 
