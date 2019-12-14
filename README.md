@@ -23,7 +23,7 @@ calls one of the two following client methods once the binary has completed exec
 A simple console app that accepts arguments and outputs a string including arguments to stdout.
 
 ## TestWebApp
-An example SignalR websocket client implementation that reliably reconnects.
+An example SignalR websocket client implementation that reliably reconnects. SEE https://github.com/DentalEMR/dentalemr-ws-service/blob/master/TestWebApp/wwwroot/js/app.js .
 
 # Copyright 
 DentalEMR, Inc. All rights reserved.
