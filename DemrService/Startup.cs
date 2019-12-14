@@ -32,7 +32,7 @@ namespace DemrService
                 builder =>
                 {
                     builder.AllowAnyMethod().AllowAnyHeader()
-                           .WithOrigins("http://localhost:52547")
+                           .WithOrigins("https://localhost:44384")
                            .AllowCredentials();
                 }
             ));
