@@ -31,18 +31,25 @@ namespace DemrService
                 _logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
                 try
                 {
-                    BinaryExecuter executer = new BinaryExecuter(_appSettings.ExePath, _appSettings.ExeArgs);
- 
+                    BinaryExecuter executer = new BinaryExecuter(
+                        _appSettings.ExePath, 
+                        _appSettings.ExeArgs, 
+                        System.Guid.NewGuid().ToString(),
+                        System.Guid.NewGuid().ToString(),
+                        (int exitCode, string stdout, string stderr, string transactionId, string invocationId) =>
+                        { //Caller should be in closure https://stackoverflow.com/questions/595482/what-are-closures-in-c
+                            _logger.LogInformation("Call to: "
+                                + _appSettings.ExePath
+                                + " completed without exceptions with exitcode: " + exitCode.ToString()
+                                + " and stdout: " + stdout
+                                + " and stderr: " + stderr
+                        );
+                    });
+
+
                     _logger.LogInformation("Calling: " + _appSettings.ExePath + " with args: " + _appSettings.ExeArgs);
                      
-                    int exitCode = await executer.Execute();
-                    
-                    _logger.LogInformation("Call to: " 
-                        + _appSettings.ExePath 
-                        + " completed without exceptions with exitcode: " + exitCode.ToString()
-                        + " and stdout: " + executer.Output 
-                        + " and stderr: " + executer.Error
-                    );
+                    await executer.Execute();
                 }
                 catch (Exception ex)
                 {

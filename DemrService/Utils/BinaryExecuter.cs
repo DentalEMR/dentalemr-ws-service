@@ -7,20 +7,29 @@ namespace DemrService.Utils
 {
     public class BinaryExecuter
     {
+        public delegate void FinishedHander(int exitCode, string stdio, string stderr, string transactionId, string invocationId);
+
         protected string _binaryName = null;
         protected string _args = null;
+        protected string _transactionid = null;
+        protected string _invocationId = null;
+        protected FinishedHander _finishedHander = null;
 
         private StringBuilder _output = null;
         private StringBuilder _error = null;
+        
 
-        public BinaryExecuter(string binaryName, string args)
+        public BinaryExecuter(string binaryName, string args, string transactionId, string invocationId, FinishedHander finishedHander)
         {
             _binaryName = binaryName;
             _args = args;
+            _transactionid = transactionId;
+            _invocationId = invocationId;
+            _finishedHander = finishedHander;
         }
-        public async Task<int> Execute()
+        public Task Execute()
         {
-            return await Task<string>.Run(() =>
+            return Task.Run(() =>
             {
                 var process = new Process()
                 {
@@ -39,14 +48,18 @@ namespace DemrService.Utils
                 process.OutputDataReceived += OutputHandler;
 
                 _error = new StringBuilder();
-                //process.ErrorDataReceived += ErrorHandler;
+                process.ErrorDataReceived += ErrorHandler;
 
                 process.Start();
                 //string result = process.StandardOutput.ReadToEnd();
                 process.BeginOutputReadLine();
                 process.WaitForExit();
 
-                return process.ExitCode;
+                if (_finishedHander != null)
+                {
+                    _finishedHander(process.ExitCode, Output, Error, (_transactionid != null ? _transactionid : ""), _invocationId);
+                }
+                //return process.ExitCode; //method returns Task<int>
             });
 
         }

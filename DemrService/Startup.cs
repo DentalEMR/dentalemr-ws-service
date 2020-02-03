@@ -8,6 +8,7 @@ using Microsoft.Extensions.Hosting;
 
 using DemrService.Hubs;
 using DemrService.Settings;
+using Microsoft.Extensions.Logging;
 
 namespace DemrService
 {
@@ -25,6 +26,7 @@ namespace DemrService
         {
             var appSettings = Configuration.GetSection("AppSettings");
             services.Configure<AppSettings>(appSettings);
+            services.AddControllers();
             services.AddSignalR();
 
             //services.AddCors();
@@ -32,7 +34,8 @@ namespace DemrService
                 builder =>
                 {
                     builder.AllowAnyMethod().AllowAnyHeader()
-                           .WithOrigins("https://localhost:44384")
+                           //.WithOrigins("https://localhost:44326", "http://10.0.2.15")
+                           .WithOrigins("https://localhost:44326", "https://app.dentaledr.com", "https://app.dentalemr.com")
                            .AllowCredentials();
                 }
             ));
@@ -40,12 +43,13 @@ namespace DemrService
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
-        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env, ILoggerFactory loggerFactory)
         {
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
             }
+            loggerFactory.AddFile("Logs/demrservice-{Date}.txt");
 
             app.UseRouting();
 
@@ -61,6 +65,7 @@ namespace DemrService
 
             app.UseEndpoints(endpoints =>
             {
+                endpoints.MapControllers();
                 endpoints.MapHub<DemrHub>("/demr");
             });
         }

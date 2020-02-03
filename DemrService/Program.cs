@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.AspNetCore.Hosting;
+using System.Net;
 
 namespace DemrService
 {
@@ -24,7 +25,17 @@ namespace DemrService
                 //})
                 .ConfigureWebHostDefaults(webBuilder =>
                 {
-                    webBuilder.UseStartup<Startup>();
+                    webBuilder.ConfigureKestrel(serverOptions =>
+                    {
+                        serverOptions.Listen(IPAddress.Loopback, 5000);
+                        serverOptions.Listen(IPAddress.Loopback, 5001,
+                            listenOptions =>
+                            {
+                                listenOptions.UseHttps("demrservice.pfx",
+                                    "dentalemr");
+                            });
+                     })
+                    .UseStartup<Startup>();
                 });
     }
 }
