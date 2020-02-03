@@ -10,6 +10,7 @@ using DemrService.Settings;
 using DemrService.Utils;
 using Microsoft.AspNetCore.StaticFiles;
 using System.Net.Http;
+using System.Collections.Generic;
 
 namespace DemrService.Hubs
 {
@@ -90,7 +91,19 @@ namespace DemrService.Hubs
         #endregion
 
         #region RetrieveFileAndPostAsync
-        protected async Task RetrieveFileAndPostAsync(string path, Boolean isDir, string url, string transactionId)
+
+        public struct MultipartFormData
+        {
+            public MultipartFormData(string Name, string Value)
+            {
+                this.Name = Name;
+                this.Value = Value;
+            }
+
+            public string Name { get; set; }
+            public string Value { get; set; }
+        }
+        public async Task RetrieveFileAndPostAsync(string path, Boolean isDir, string url, List<MultipartFormData> additionalMultipartFormData, string transactionId)
         {
             string connectionId = Context.ConnectionId;
 
@@ -105,63 +118,82 @@ namespace DemrService.Hubs
 
                 _ = Task.Run( async () =>  //run asynchronously by assigning to discard. Run synchronously by 'await Task.Run(...'
                 {
-                    string filePath = path;
-                    string tmpZip = Guid.NewGuid().ToString();
-                    string fileName = Path.GetFileName(path);
-
-                    if (isDir)
+                    try
                     {
-                        ZipFile.CreateFromDirectory(path, tmpZip);
-                        filePath = tmpZip;
-                        fileName = Directory.GetParent(path).Name;
-                    }
 
-                    using (FileStream fileStream = System.IO.File.OpenRead(filePath))
-                    {
-                        HttpContent fileStreamContent = new StreamContent(fileStream);
-                        using (var client = new HttpClient())
-                        using (var formData = new MultipartFormDataContent())
+                        string filePath = path;
+                        string tmpZip = Guid.NewGuid().ToString();
+                        string fileName = Path.GetFileName(path);
+
+                        if (isDir)
                         {
-                            formData.Add(fileStreamContent, fileName, fileName);
-                            var response = await client.PostAsync(url, formData);
-                            if (isDir)
+                            ZipFile.CreateFromDirectory(path, tmpZip);
+                            filePath = tmpZip;
+                            fileName = Directory.GetParent(path).Name;
+                        }
+
+                        using (FileStream fileStream = System.IO.File.OpenRead(filePath))
+                        {
+                            HttpContent fileStreamContent = new StreamContent(fileStream);
+                            using (var client = new HttpClient())
+                            using (var formData = new MultipartFormDataContent())
                             {
-                                if (System.IO.File.Exists(tmpZip))
+                                foreach (MultipartFormData data in additionalMultipartFormData)
                                 {
-                                    System.IO.File.Delete(tmpZip);
+                                    formData.Add(new StringContent(data.Value), data.Name);
                                 }
-                            }
-                            if (!response.IsSuccessStatusCode)
-                            {
-                                _logger.LogInformation("{0} RetrieveFileAndPost {1}: {2}; {3}; {4} returned status failed. Status code: {5}; Reason: {6}.",
-                                     DateTimeOffset.Now,
-                                     transactionId,
-                                     path,
-                                     isDir.ToString(),
-                                     url, 
-                                     response.StatusCode.ToString(),
-                                     response.ReasonPhrase);
-                                await _demr_hub.Clients.Client(connectionId).SendAsync("RetrieveFileAndPostFailed", response.StatusCode.ToString(), response.ReasonPhrase, transactionId);
-                            }
-                            else
-                            {
-                                string content = "";
-                                Stream contentStream = await response.Content.ReadAsStreamAsync();
-                                using (StreamReader reader = new StreamReader(contentStream))
+                                formData.Add(fileStreamContent, fileName, fileName);
+                                var response = await client.PostAsync(url, formData);
+                                if (isDir)
                                 {
-                                    content = reader.ReadToEnd();
-                                    // Do something with the value
+                                    if (System.IO.File.Exists(tmpZip))
+                                    {
+                                        System.IO.File.Delete(tmpZip);
+                                    }
                                 }
-                                _logger.LogInformation("{0} RetrieveFileAndPost {1}: {2}; {3}; {4} returned status success with response content: {5}",
-                                    DateTimeOffset.Now,
-                                    transactionId,
-                                    path,
-                                    isDir.ToString(),
-                                    url,
-                                    content);
-                                await _demr_hub.Clients.Client(connectionId).SendAsync("RetrieveFileAndPostSucceeded", content, transactionId);
+                                if (!response.IsSuccessStatusCode)
+                                {
+                                    _logger.LogInformation("{0} RetrieveFileAndPost {1}: {2}; {3}; {4} returned status failed. Status code: {5}; Reason: {6}.",
+                                         DateTimeOffset.Now,
+                                         transactionId,
+                                         path,
+                                         isDir.ToString(),
+                                         url,
+                                         response.StatusCode.ToString(),
+                                         response.ReasonPhrase);
+                                    await _demr_hub.Clients.Client(connectionId).SendAsync("RetrieveFileAndPostFailed", response.StatusCode.ToString(), response.ReasonPhrase, transactionId);
+                                }
+                                else
+                                {
+                                    string content = "";
+                                    Stream contentStream = await response.Content.ReadAsStreamAsync();
+                                    using (StreamReader reader = new StreamReader(contentStream))
+                                    {
+                                        content = reader.ReadToEnd();
+                                        // Do something with the value
+                                    }
+                                    _logger.LogInformation("{0} RetrieveFileAndPost {1}: {2}; {3}; {4} returned status success with response content: {5}",
+                                        DateTimeOffset.Now,
+                                        transactionId,
+                                        path,
+                                        isDir.ToString(),
+                                        url,
+                                        content);
+                                    await _demr_hub.Clients.Client(connectionId).SendAsync("RetrieveFileAndPostSucceeded", content, transactionId);
+                                }
                             }
                         }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError("{0} RetrieveFileAndPost {1}: {2}; {3}; {4} threw exception {5}",
+                            DateTimeOffset.Now,
+                            transactionId,
+                            path,
+                            isDir.ToString(),
+                            url,
+                            ex.Message);
+                        await _demr_hub.Clients.Client(connectionId).SendAsync("RetrieveFileAndPostExceptioned", ex.Message, transactionId);
                     }
                 });
             }

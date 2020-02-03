@@ -75,9 +75,51 @@ document.getElementById("executeButton").addEventListener("click", function (eve
     event.preventDefault();
 });
 
+//postFileButton
+
+connection.on("RetrieveFileAndPostSucceeded", (content, transactionId) => {
+    console.log('RetrieveFileAndPostSucceeded. TransactionId: ' + transactionId);
+    document.getElementById("stdOut").innerText = content;
+    document.getElementById("transactionId").innerText = transactionId;
+});
+
+connection.on("RetrieveFileAndPostFailed", (status, reason, transactionId) => {
+    console.log('RetrieveFileAndPostExceptioned. TransactionId: ' + transactionId);
+    document.getElementById("exceptionMessage").innerText = status + ' ' + reason;
+    document.getElementById("transactionId").innerText = transactionId;
+});
+
+connection.on("RetrieveFileAndPostExceptioned", (exceptionMessage, transactionId) => {
+    console.log('RetrieveFileAndPostExceptioned. TransactionId: ' + transactionId);
+    document.getElementById("exceptionMessage").innerText = exceptionMessage;
+    document.getElementById("transactionId").innerText = transactionId;
+});
+
+document.getElementById("postFileButton").addEventListener("click", function (event) {
+    var transactionId = (Math.floor(Math.random() * (100000 - 0))).toString();
+    console.log("Posting file transactionId " + transactionId);
+    var data = [
+        {
+            Name: "key1",
+            Value: "value1"
+        },
+        {
+            Name: "key2",
+            Value: "value2"
+        },
+    ];
+    connection.invoke("RetrieveFileAndPostAsync", document.getElementById("postFilePath").value, false, document.getElementById("url").value, data, transactionId).then(function () {
+        console.info('then');
+    }).catch(function (err) {
+        return console.error(err.toString());
+    });
+    event.preventDefault();
+});
+
+
 start();
 
-
+//http GET test
 function reqListener() {
     console.log(this.responseText);
 }
