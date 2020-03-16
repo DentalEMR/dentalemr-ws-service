@@ -156,7 +156,7 @@ namespace DemrService.Hubs
                                     formData.Add(new StringContent(data.Value), data.Name);
                                 }
                                 formData.Add(fileStreamContent, fileName, fileName);
-                                await Task.Delay(10000);
+                                // for testing:  await Task.Delay(10000);
                                 var response = await client.PostAsync(url, formData);
                                 if (!response.IsSuccessStatusCode)
                                 {
