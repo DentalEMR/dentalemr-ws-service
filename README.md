@@ -29,7 +29,7 @@ Allows origins:
 - `BinaryExecuterAsync(binaryPath, binaryArgs, transactionId)` that asynchronously (more than one call to method runs in parallel) executes the binary at `binarPath` with `binaryArgs` and calls one of the two following client methods once the binary has completed execution:
     1. InvokeBinarySucceeded (exitCode, binaryStdOut, binaryStdErr, transactionId)
 
-
+- `RetrieveFileAndPost(path, isDir, url, transactionId)` that synchronously zips the directory at `path` and uploads to `url` if `isDir` is true, else uploads the file at `path` to `url` and sends either:
 - `RetrieveFileAndPostAsync(path, isDir, url, transactionId)` that asynchronously zips the directory at `path` and uploads to `url` if `isDir` is true, else uploads the file at `path` to `url` and sends either:
     1. RetrieveFileAndPostFailed(tatusCode, reasonPhrase, transactionId) or
     2. RetrieveFileAndPostSucceeded(content, transactionId)
@@ -45,7 +45,7 @@ Allows origins:
     1. From within Visual Studio, publish 'DemrService' project AND 'demrservice.pfx' to 'publish' folder.
     2. Zip / unzip 'publish' folder onto integration Windows computer.
     3. Double click 'demrservice.pfx' on integration computer and install certificate (required by Chrome but not Firefox for some reason)
-    4. In Firefox navigate a browser tab to https://127.0.0.1:5001 and in warning select advanced and add exception (required by Firefox but not Chrome for some reason).
+    4. In both Chrome and Firefox, navigate a browser tab to https://127.0.0.1:5001 and in warning select advanced and add exception.
     5. Double click 'demrservice.exe' to run in console window. Ctrl-c exists program. Can be installed as a Windows service but this hasn't been fiddled with yet.
 
 # Test applications

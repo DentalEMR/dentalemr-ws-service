@@ -39,7 +39,7 @@ namespace DemrService.Hubs
             return InvokeBinary(binaryPath, binaryArgs, transactionId, false);
         }
 
-        protected async Task InvokeBinary(string binaryPath, string binaryArgs, string transactionId, Boolean synchronous)
+        protected async Task InvokeBinary(string binaryPath, string binaryArgs, string transactionId, Boolean isSynchronous)
         {
             string connectionId = Context.ConnectionId;
             try
@@ -67,7 +67,7 @@ namespace DemrService.Hubs
                     binaryPath, 
                     binaryArgs);
 
-                if (synchronous)
+                if (isSynchronous)
                 {
                     await executer.Execute();
                 }
@@ -90,6 +90,7 @@ namespace DemrService.Hubs
 
         #endregion
 
+        
         #region RetrieveFileAndPostAsync
 
         public struct MultipartFormData
@@ -103,7 +104,19 @@ namespace DemrService.Hubs
             public string Name { get; set; }
             public string Value { get; set; }
         }
-        public async Task RetrieveFileAndPostAsync(string path, Boolean isDir, string url, List<MultipartFormData> additionalMultipartFormData, string transactionId)
+
+        public Task RetrieveFileAndPost(string path, Boolean isDir, string url, List<MultipartFormData> additionalMultipartFormData, string transactionId)
+        {
+            return RetrieveFileAndPost(path, isDir, url, additionalMultipartFormData, transactionId, true);
+        }
+
+        public Task RetrieveFileAndPostAsync(string path, Boolean isDir, string url, List<MultipartFormData> additionalMultipartFormData, string transactionId)
+        {
+            return RetrieveFileAndPost(path, isDir, url, additionalMultipartFormData, transactionId, false);
+        }
+
+
+        protected async Task RetrieveFileAndPost(string path, Boolean isDir, string url, List<MultipartFormData> additionalMultipartFormData, string transactionId, Boolean isSynchronous)
         {
             string connectionId = Context.ConnectionId;
 
@@ -116,13 +129,13 @@ namespace DemrService.Hubs
                     isDir.ToString(),
                     url);
 
-                _ = Task.Run( async () =>  //run asynchronously by assigning to discard. Run synchronously by 'await Task.Run(...'
+                //_ = Task.Run( async () =>  //run asynchronously by assigning to discard. Run synchronously by 'await Task.Run(...'
+                Func<Task> run = async () =>
                 {
+                    string tmpZip = Guid.NewGuid().ToString();
                     try
                     {
-
                         string filePath = path;
-                        string tmpZip = Guid.NewGuid().ToString();
                         string fileName = Path.GetFileName(path);
 
                         if (isDir)
@@ -143,14 +156,8 @@ namespace DemrService.Hubs
                                     formData.Add(new StringContent(data.Value), data.Name);
                                 }
                                 formData.Add(fileStreamContent, fileName, fileName);
+                                await Task.Delay(10000);
                                 var response = await client.PostAsync(url, formData);
-                                if (isDir)
-                                {
-                                    if (System.IO.File.Exists(tmpZip))
-                                    {
-                                        System.IO.File.Delete(tmpZip);
-                                    }
-                                }
                                 if (!response.IsSuccessStatusCode)
                                 {
                                     _logger.LogInformation("{0} RetrieveFileAndPost {1}: {2}; {3}; {4} returned status failed. Status code: {5}; Reason: {6}.",
@@ -195,7 +202,27 @@ namespace DemrService.Hubs
                             ex.Message);
                         await _demr_hub.Clients.Client(connectionId).SendAsync("RetrieveFileAndPostExceptioned", ex.Message, transactionId);
                     }
-                });
+                    finally
+                    {
+                        if (isDir)
+                        {
+                            if (System.IO.File.Exists(tmpZip))
+                            {
+                                System.IO.File.Delete(tmpZip);
+                            }
+                        }
+
+                    }
+                };
+                if (isSynchronous)
+                {
+                    await run(); //run asynchronously by assigning to discard. Run synchronously by 'await Task.Run(...'
+                }
+                else
+                {
+                    _ = run(); // see https://docs.microsoft.com/en-us/dotnet/csharp/discards
+                }
+
             }
             catch (Exception ex)
             {
