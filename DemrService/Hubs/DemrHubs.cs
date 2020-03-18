@@ -105,18 +105,18 @@ namespace DemrService.Hubs
             public string Value { get; set; }
         }
 
-        public Task RetrieveFileAndPost(string path, Boolean isDir, string url, List<MultipartFormData> additionalMultipartFormData, string transactionId)
+        public Task RetrieveFileAndPost(string path, Boolean isDir, string url, string postId, List<MultipartFormData> additionalMultipartFormData, string transactionId)
         {
-            return RetrieveFileAndPost(path, isDir, url, additionalMultipartFormData, transactionId, true);
+            return RetrieveFileAndPost(path, isDir, url, postId, additionalMultipartFormData, transactionId, true);
         }
 
-        public Task RetrieveFileAndPostAsync(string path, Boolean isDir, string url, List<MultipartFormData> additionalMultipartFormData, string transactionId)
+        public Task RetrieveFileAndPostAsync(string path, Boolean isDir, string url, string postId, List<MultipartFormData> additionalMultipartFormData, string transactionId)
         {
-            return RetrieveFileAndPost(path, isDir, url, additionalMultipartFormData, transactionId, false);
+            return RetrieveFileAndPost(path, isDir, url, postId, additionalMultipartFormData, transactionId, false);
         }
 
 
-        protected async Task RetrieveFileAndPost(string path, Boolean isDir, string url, List<MultipartFormData> additionalMultipartFormData, string transactionId, Boolean isSynchronous)
+        protected async Task RetrieveFileAndPost(string path, Boolean isDir, string url, string postId, List<MultipartFormData> additionalMultipartFormData, string transactionId, Boolean isSynchronous)
         {
             string connectionId = Context.ConnectionId;
 
@@ -142,7 +142,7 @@ namespace DemrService.Hubs
                         {
                             ZipFile.CreateFromDirectory(path, tmpZip);
                             filePath = tmpZip;
-                            fileName = Directory.GetParent(path).Name;
+                            fileName += ".zip"; //Directory.GetParent(path).Name;
                         }
 
                         using (FileStream fileStream = System.IO.File.OpenRead(filePath))
@@ -155,7 +155,7 @@ namespace DemrService.Hubs
                                 {
                                     formData.Add(new StringContent(data.Value), data.Name);
                                 }
-                                formData.Add(fileStreamContent, fileName, fileName);
+                                formData.Add(fileStreamContent, "file", fileName);
                                 // for testing:  await Task.Delay(10000);
                                 var response = await client.PostAsync(url, formData);
                                 if (!response.IsSuccessStatusCode)
@@ -186,7 +186,7 @@ namespace DemrService.Hubs
                                         isDir.ToString(),
                                         url,
                                         content);
-                                    await _demr_hub.Clients.Client(connectionId).SendAsync("RetrieveFileAndPostSucceeded", content, transactionId);
+                                    await _demr_hub.Clients.Client(connectionId).SendAsync("RetrieveFileAndPostSucceeded", content, postId, transactionId);
                                 }
                             }
                         }
