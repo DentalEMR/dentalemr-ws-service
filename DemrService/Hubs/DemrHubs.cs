@@ -12,20 +12,30 @@ using Microsoft.AspNetCore.StaticFiles;
 using System.Net.Http;
 using System.Collections.Generic;
 
+
 namespace DemrService.Hubs
 {
     public class DemrHub : Hub
     {
         private readonly ILogger<DemrHub> _logger;
         private readonly AppSettings _appSettings;
-        private readonly IHubContext<DemrHub> _demr_hub;
 
-        public DemrHub(ILogger<DemrHub> logger, IOptions<AppSettings> appSettings, IHubContext<DemrHub> demr_hub)
+        //NOTE: https://docs.microsoft.com/en-us/aspnet/core/signalr/hubcontext?view=aspnetcore-3.1 probably doesn't work for Hubs themselves since they are not controllers,
+        // and Hubs are transient (https://docs.microsoft.com/en-us/aspnet/core/signalr/hubs?view=aspnetcore-3.1) .
+        // so put callbacks in closures
+        // https://docs.microsoft.com/en-us/dotnet/csharp/programming-guide/statements-expressions-operators/lambda-expressions#capture-of-outer-variables-and-variable-scope-in-lambda-expressions)
+        // https://stackoverflow.com/questions/595482/what-are-closures-in-c
+
+        private static Dictionary<string, FileSystemWatcher> watchers;
+
+        static DemrHub() 
+        {
+            watchers = new Dictionary<string, FileSystemWatcher>();
+        }
+        public DemrHub(ILogger<DemrHub> logger, IOptions<AppSettings> appSettings)
         {
             _logger = logger;
             _appSettings = appSettings.Value;
-            _demr_hub = demr_hub;
-
         }
 
         #region InvokeBinary
@@ -44,12 +54,10 @@ namespace DemrService.Hubs
             string connectionId = Context.ConnectionId;
             try
             {
-                BinaryExecuter executer = new BinaryExecuter(binaryPath, 
-                    binaryArgs, 
-                    transactionId, 
-                    connectionId, 
+
+                Func<IHubCallerClients, string, Action<int, string, string, string, string>> finishedHandlerClosure = (IHubCallerClients clients, string connectionId) =>
                     async (int exitCode, string stdout, string stderr, string transactionId, string connectionId) =>
-                    { //Caller should be in closure https://stackoverflow.com/questions/595482/what-are-closures-in-c
+                    { 
                         _logger.LogInformation("{0} InvokeBinary: {1} {2} completed without exceptions returning exitCode: {3} and stdout: {4} and stderr: {5}",
                             DateTimeOffset.Now,
                             transactionId,
@@ -58,8 +66,15 @@ namespace DemrService.Hubs
                             stdout,
                             stderr);
 
-                        await _demr_hub.Clients.Client(connectionId).SendAsync("InvokeBinarySucceeded", exitCode, stdout, stderr, transactionId);
-                    });
+                        await clients.Client(connectionId).SendAsync("InvokeBinarySucceeded", exitCode, stdout, stderr, transactionId);
+                    };
+
+                BinaryExecuter executer = new BinaryExecuter(binaryPath,
+                    binaryArgs,
+                    transactionId,
+                    connectionId,
+                    new BinaryExecuter.FinishedHandler(finishedHandlerClosure(Clients, connectionId))
+                );
 
                 _logger.LogInformation("{0} InvokeBinary {1}: Calling: {2}: with args: {3}.",
                     DateTimeOffset.Now,
@@ -91,7 +106,7 @@ namespace DemrService.Hubs
         #endregion
 
         
-        #region RetrieveFileAndPostAsync
+        #region RetrieveFileAndPost
 
         public struct MultipartFormData
         {
@@ -105,20 +120,21 @@ namespace DemrService.Hubs
             public string Value { get; set; }
         }
 
-        public Task RetrieveFileAndPost(string path, Boolean isDir, string url, string postId, List<MultipartFormData> additionalMultipartFormData, string transactionId)
+        public Task RetrieveFileAndPost(string path, Boolean deletePath, string url, string postId, List<MultipartFormData> additionalMultipartFormData, string transactionId)
         {
-            return RetrieveFileAndPost(path, isDir, url, postId, additionalMultipartFormData, transactionId, true);
+            return RetrieveFileAndPost(path, deletePath, url, postId, additionalMultipartFormData, transactionId, true);
         }
 
-        public Task RetrieveFileAndPostAsync(string path, Boolean isDir, string url, string postId, List<MultipartFormData> additionalMultipartFormData, string transactionId)
+        public Task RetrieveFileAndPostAsync(string path, Boolean deletePath, string url, string postId, List<MultipartFormData> additionalMultipartFormData, string transactionId)
         {
-            return RetrieveFileAndPost(path, isDir, url, postId, additionalMultipartFormData, transactionId, false);
+            return RetrieveFileAndPost(path, deletePath, url, postId, additionalMultipartFormData, transactionId, false);
         }
 
 
-        protected async Task RetrieveFileAndPost(string path, Boolean isDir, string url, string postId, List<MultipartFormData> additionalMultipartFormData, string transactionId, Boolean isSynchronous)
+        protected async Task RetrieveFileAndPost(string path, Boolean deletePath, string url, string postId, List<MultipartFormData> additionalMultipartFormData, string transactionId, Boolean isSynchronous)
         {
             string connectionId = Context.ConnectionId;
+            bool isDir = (File.GetAttributes(path) & FileAttributes.Directory) == FileAttributes.Directory;
 
             try
             {
@@ -129,8 +145,8 @@ namespace DemrService.Hubs
                     isDir.ToString(),
                     url);
 
-                //_ = Task.Run( async () =>  //run asynchronously by assigning to discard. Run synchronously by 'await Task.Run(...'
-                Func<Task> run = async () =>
+                Func<IHubCallerClients, string, Func<Task>> runClosure = (IHubCallerClients clients, string connectionId) =>
+                async () =>
                 {
                     string tmpZip = Guid.NewGuid().ToString();
                     try
@@ -168,7 +184,7 @@ namespace DemrService.Hubs
                                          url,
                                          response.StatusCode.ToString(),
                                          response.ReasonPhrase);
-                                    await _demr_hub.Clients.Client(connectionId).SendAsync("RetrieveFileAndPostFailed", response.StatusCode.ToString(), response.ReasonPhrase, transactionId);
+                                    await clients.Client(connectionId).SendAsync("RetrieveFileAndPostFailed", response.StatusCode.ToString(), response.ReasonPhrase, transactionId);
                                 }
                                 else
                                 {
@@ -186,7 +202,7 @@ namespace DemrService.Hubs
                                         isDir.ToString(),
                                         url,
                                         content);
-                                    await _demr_hub.Clients.Client(connectionId).SendAsync("RetrieveFileAndPostSucceeded", content, postId, transactionId);
+                                    await clients.Client(connectionId).SendAsync("RetrieveFileAndPostSucceeded", content, postId, path, deletePath, transactionId);
                                 }
                             }
                         }
@@ -200,27 +216,23 @@ namespace DemrService.Hubs
                             isDir.ToString(),
                             url,
                             ex.Message);
-                        await _demr_hub.Clients.Client(connectionId).SendAsync("RetrieveFileAndPostExceptioned", ex.Message, transactionId);
+                        await clients.Client(connectionId).SendAsync("RetrieveFileAndPostExceptioned", ex.Message, transactionId);
                     }
                     finally
                     {
-                        if (isDir)
+                        if (System.IO.File.Exists(tmpZip))
                         {
-                            if (System.IO.File.Exists(tmpZip))
-                            {
-                                System.IO.File.Delete(tmpZip);
-                            }
+                            System.IO.File.Delete(tmpZip);
                         }
-
                     }
                 };
-                if (isSynchronous)
+                if (isSynchronous) //Run synchronously by 'await Task.Run(...'
                 {
-                    await run(); //run asynchronously by assigning to discard. Run synchronously by 'await Task.Run(...'
+                    await runClosure(Clients, connectionId)();
                 }
-                else
+                else //Run asynchronously by assigning to discard (no await)
                 {
-                    _ = run(); // see https://docs.microsoft.com/en-us/dotnet/csharp/discards
+                    _ = runClosure(Clients, connectionId)(); // see  https://docs.microsoft.com/en-us/dotnet/csharp/discards
                 }
 
             }
@@ -237,6 +249,71 @@ namespace DemrService.Hubs
             }
         }
 
+        public Task DeletePath(string path)
+        {
+            return Task.Run(() =>
+            {
+                if ((File.GetAttributes(path) & FileAttributes.Directory) == FileAttributes.Directory)
+                {
+                    Directory.Delete(path, true);
+                }
+                else
+                {
+                    File.Delete(path);
+                }
+            });
+        }
+
         #endregion
+
+        #region WatchForCreateInDir
+        public void WatchForCreateInDirBegin(string watchInDir, Boolean del)
+        {
+            string connectionId = Context.ConnectionId;
+            FileSystemWatcher watcher = null;
+            // remove existing watcher and re-create for this key so closure captures new clients and connectionId
+            if (watchers.ContainsKey(watchInDir))
+            { 
+                watcher = watchers[watchInDir];
+                watchers.Remove(watchInDir);
+                watcher.Dispose();
+                watcher = null;
+            }
+            watcher = new FileSystemWatcher();
+            watcher.Path = watchInDir;
+
+            Func<IHubCallerClients, string, Boolean, Action<object, FileSystemEventArgs>> sendClosure = (IHubCallerClients clients, string connectionId, Boolean del) =>
+                (object source, FileSystemEventArgs e) =>
+                    clients.Client(connectionId).SendAsync(
+                        "CreatedInWatchDir",
+                        e.FullPath,
+                        (File.GetAttributes(e.FullPath) & FileAttributes.Directory) == FileAttributes.Directory,
+                        del);
+            watcher.Created += new FileSystemEventHandler(sendClosure(Clients, connectionId, del));
+
+            watcher.EnableRaisingEvents = true;
+            watchers.Add(watchInDir, watcher);
+        }
+
+        public void WatchForCreateInDirEnd(string watchInDir)
+        {
+            if (watchers.ContainsKey(watchInDir))
+            {
+                FileSystemWatcher watcher = watchers[watchInDir];
+                watchers.Remove(watchInDir);
+                watcher.Dispose();
+                watcher = null;
+            }
+        }
+
+        #endregion
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) //invoked by Hub.dispose()
+            {
+                base.Dispose(disposing);
+            }
+        }
     }
 }

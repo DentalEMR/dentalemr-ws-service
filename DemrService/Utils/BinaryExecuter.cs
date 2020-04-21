@@ -7,25 +7,25 @@ namespace DemrService.Utils
 {
     public class BinaryExecuter
     {
-        public delegate void FinishedHander(int exitCode, string stdio, string stderr, string transactionId, string invocationId);
+        public delegate void FinishedHandler(int exitCode, string stdio, string stderr, string transactionId, string invocationId);
 
         protected string _binaryName = null;
         protected string _args = null;
         protected string _transactionid = null;
         protected string _invocationId = null;
-        protected FinishedHander _finishedHander = null;
+        protected FinishedHandler _finishedHandler = null;
 
         private StringBuilder _output = null;
         private StringBuilder _error = null;
         
 
-        public BinaryExecuter(string binaryName, string args, string transactionId, string invocationId, FinishedHander finishedHander)
+        public BinaryExecuter(string binaryName, string args, string transactionId, string invocationId, FinishedHandler finishedHandler)
         {
             _binaryName = binaryName;
             _args = args;
             _transactionid = transactionId;
             _invocationId = invocationId;
-            _finishedHander = finishedHander;
+            _finishedHandler = finishedHandler;
         }
         public Task Execute()
         {
@@ -55,9 +55,9 @@ namespace DemrService.Utils
                 process.BeginOutputReadLine();
                 process.WaitForExit();
 
-                if (_finishedHander != null)
+                if (_finishedHandler != null)
                 {
-                    _finishedHander(process.ExitCode, Output, Error, (_transactionid != null ? _transactionid : ""), _invocationId);
+                    _finishedHandler(process.ExitCode, Output, Error, (_transactionid != null ? _transactionid : ""), _invocationId);
                 }
                 //return process.ExitCode; //method returns Task<int>
             });
