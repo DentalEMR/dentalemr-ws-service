@@ -69,7 +69,8 @@ namespace DemrService.Hubs
                         await clients.Client(connectionId).SendAsync("InvokeBinarySucceeded", exitCode, stdout, stderr, transactionId);
                     };
 
-                BinaryExecuter executer = new BinaryExecuter(binaryPath,
+                BinaryExecuter executer = new BinaryExecuter(
+                    binaryPath,
                     binaryArgs,
                     transactionId,
                     connectionId,
@@ -173,6 +174,7 @@ namespace DemrService.Hubs
                                 }
                                 formData.Add(fileStreamContent, "file", fileName);
                                 // for testing:  await Task.Delay(10000);
+                                client.Timeout = TimeSpan.FromMinutes(120);
                                 var response = await client.PostAsync(url, formData);
                                 if (!response.IsSuccessStatusCode)
                                 {
