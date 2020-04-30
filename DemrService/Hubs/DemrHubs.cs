@@ -11,7 +11,8 @@ using DemrService.Utils;
 using Microsoft.AspNetCore.StaticFiles;
 using System.Net.Http;
 using System.Collections.Generic;
-
+using System.Drawing;
+using System.Drawing.Imaging;
 
 namespace DemrService.Hubs
 {
@@ -107,7 +108,6 @@ namespace DemrService.Hubs
         #endregion
 
         
-        #region RetrieveFileAndPost
 
         public struct MultipartFormData
         {
@@ -120,6 +120,8 @@ namespace DemrService.Hubs
             public string Name { get; set; }
             public string Value { get; set; }
         }
+
+        #region RetrieveFileAndPost
 
         public Task RetrieveFileAndPost(string path, Boolean deletePath, string url, string postId, List<MultipartFormData> additionalMultipartFormData, string transactionId)
         {
@@ -173,7 +175,6 @@ namespace DemrService.Hubs
                                     formData.Add(new StringContent(data.Value), data.Name);
                                 }
                                 formData.Add(fileStreamContent, "file", fileName);
-                                // for testing:  await Task.Delay(10000);
                                 client.Timeout = TimeSpan.FromMinutes(120);
                                 var response = await client.PostAsync(url, formData);
                                 if (!response.IsSuccessStatusCode)
@@ -251,6 +252,10 @@ namespace DemrService.Hubs
             }
         }
 
+        #endregion
+
+        #region DeletePath
+
         public Task DeletePath(string path)
         {
             return Task.Run(() =>
@@ -268,41 +273,290 @@ namespace DemrService.Hubs
 
         #endregion
 
-        #region WatchForCreateInDir
-        public void WatchForCreateInDirBegin(string watchInDir, Boolean del)
+        #region RetrieveImageAndPost
+
+        public Task RetrieveImageAndPost(
+            string imagePath,
+            Boolean deleteImagePath,
+            string imageUrl,
+            string imagePostId,
+            List<MultipartFormData> imageAdditionalMultipartFormData,
+            string thumbUrl,
+            string thumbPostId,
+            List<MultipartFormData> thumbAdditionalMultipartFormData,
+            string transactionId)
+
         {
+            return RetrieveImageAndPost(
+                imagePath,
+                deleteImagePath,
+                imageUrl,
+                imagePostId,
+                imageAdditionalMultipartFormData,
+                thumbUrl,
+                thumbPostId,
+                thumbAdditionalMultipartFormData,
+                transactionId,
+                true);
+        }
+
+        public Task RetrieveImageAndPostAsync(
+            string imagePath,
+            Boolean deleteImagePath,
+            string imageUrl,
+            string imagePostId,
+            List<MultipartFormData> imageAdditionalMultipartFormData,
+            string thumbUrl,
+            string thumbPostId,
+            List<MultipartFormData> thumbAdditionalMultipartFormData,
+            string transactionId)
+
+        {
+            return RetrieveImageAndPost(
+                imagePath,
+                deleteImagePath,
+                imageUrl,
+                imagePostId,
+                imageAdditionalMultipartFormData,
+                thumbUrl,
+                thumbPostId,
+                thumbAdditionalMultipartFormData,
+                transactionId,
+                false);
+        }
+
+
+        protected async Task RetrieveImageAndPost(
+            string imagePath, 
+            Boolean deleteImagePath, 
+            string imageUrl, 
+            string imagePostId, 
+            List<MultipartFormData> imageAdditionalMultipartFormData,
+            string thumbUrl,
+            string thumbPostId,
+            List<MultipartFormData> thumbAdditionalMultipartFormData,
+            string transactionId, 
+            Boolean isSynchronous)
+        {
+            string connectionId = Context.ConnectionId;
+
+            try
+            {
+                _logger.LogInformation("{0} RetrieveImageAndPost {1}: imagePath: {2}; imageUrl: {3}; thumbUrl: {4}",
+                    DateTimeOffset.Now,
+                    transactionId,
+                    imagePath,
+                    imageUrl,
+                    thumbUrl);
+
+                Func<IHubCallerClients, string, Func<Task>> runClosure = (IHubCallerClients clients, string connectionId) =>
+                async () =>
+                {
+                    string tmpZip = Guid.NewGuid().ToString();
+                    try
+                    {
+                        string filePath = imagePath;
+                        string fileName = Path.GetFileName(imagePath);
+
+                        if ((File.GetAttributes(imagePath) & FileAttributes.Directory) == FileAttributes.Directory)
+                        {
+                            throw new HubException("imageFile is a directory");
+                        }
+
+                        using (FileStream fileStreamForImage = System.IO.File.OpenRead(filePath))
+                        using (FileStream fileStreamForBuildingThumb = System.IO.File.OpenRead(filePath))
+                        using (var thumbJpegStream = new MemoryStream())
+                        {
+                            Image image = Image.FromStream(fileStreamForBuildingThumb, true, true);
+                            int thumbWidth = (image.Width > 640) ? 640 : image.Width;
+                            int thumbHeight = (image.Width > 640) ? (int)Math.Round(image.Height * (640.0 / image.Width)) : image.Height;
+                            var thumbImage = new Bitmap(thumbWidth, thumbHeight);
+                            using (var g = Graphics.FromImage(thumbImage))
+                            {
+                                g.DrawImage(image, 0, 0, thumbWidth, thumbHeight);
+                            }
+                            thumbImage.Save(thumbJpegStream, ImageFormat.Jpeg);
+                            thumbJpegStream.Position = 0;
+
+                            using (HttpContent fileStreamContent = new StreamContent(fileStreamForImage))
+                            using (HttpContent thumbtreamContent = new StreamContent(thumbJpegStream))
+                            using (var imageClient = new HttpClient())
+                            using (var thumbClient = new HttpClient())
+                            using (var imageFormData = new MultipartFormDataContent())
+                            using (var thumbFormData = new MultipartFormDataContent())
+                            {
+                                foreach (MultipartFormData data in imageAdditionalMultipartFormData)
+                                {
+                                    imageFormData.Add(new StringContent(data.Value), data.Name);
+                                }
+                                imageFormData.Add(fileStreamContent, "file", fileName);
+                                imageClient.Timeout = TimeSpan.FromMinutes(30);
+                                Task<HttpResponseMessage> imageUploadResponseTask = imageClient.PostAsync(imageUrl, imageFormData);
+                                //var response = await imageClient.PostAsync(imageUrl, imageFormData);
+
+                                foreach (MultipartFormData data in thumbAdditionalMultipartFormData)
+                                {
+                                    thumbFormData.Add(new StringContent(data.Value), data.Name);
+                                }
+                                thumbFormData.Add(thumbtreamContent, "file", fileName);
+                                thumbClient.Timeout = TimeSpan.FromMinutes(5);
+                                Task<HttpResponseMessage> thumbUploadResponseTask = imageClient.PostAsync(thumbUrl, thumbFormData);
+
+                                var responseTasks = Task.WhenAll(imageUploadResponseTask, thumbUploadResponseTask);
+                                await responseTasks;
+
+                                bool imageSuccess = responseTasks.Result[0].IsSuccessStatusCode;
+                                var imageStatusCode = responseTasks.Result[0].StatusCode;
+                                string imageReason = responseTasks.Result[0].ReasonPhrase;
+
+                                bool thumbSuccess = responseTasks.Result[1].IsSuccessStatusCode;
+                                var thumbStatusCode = responseTasks.Result[1].StatusCode;
+                                string thumbReason = responseTasks.Result[1].ReasonPhrase;
+
+                                if (!imageSuccess || !thumbSuccess)
+                                {
+                                    _logger.LogInformation("{0} RetrieveImageAndPost {1}: {2}; {3}; {4} returned status failed. Image status code: {5}; Image reason: {6}. Thumb status code: {7}; Thumb reason: {8}.",
+                                            DateTimeOffset.Now,
+                                            transactionId,
+                                            imagePath,
+                                            imageUrl,
+                                            thumbUrl,
+                                            imageStatusCode.ToString(),
+                                            imageReason,
+                                            thumbStatusCode.ToString(),
+                                            thumbReason);
+                                    await clients.Client(connectionId).SendAsync("RetrieveImageAndPostFailed", imageStatusCode.ToString(), imageReason, thumbStatusCode.ToString(), thumbReason, transactionId);
+                                }
+                                else
+                                {
+                                    string imageContent = "";
+                                    Stream imageContentStream = await responseTasks.Result[0].Content.ReadAsStreamAsync();
+                                    using (StreamReader reader = new StreamReader(imageContentStream))
+                                    {
+                                        imageContent = reader.ReadToEnd();
+                                    }
+
+                                    string thumbContent = "";
+                                    Stream thumbContentStream = await responseTasks.Result[1].Content.ReadAsStreamAsync();
+                                    using (StreamReader reader = new StreamReader(thumbContentStream))
+                                    {
+                                        thumbContent = reader.ReadToEnd();
+                                    }
+
+                                    _logger.LogInformation("{0} RetrieveImageAndPost {1}: {2}; {3} returned status success with response content: {4}; {5} returned status success with response content: {6}",
+                                        DateTimeOffset.Now,
+                                        transactionId,
+                                        imagePath,
+                                        imageUrl,
+                                        imageContent,
+                                        thumbUrl,
+                                        thumbContent);
+                                    await clients.Client(connectionId).SendAsync("RetrieveImageAndPostSucceeded", imageContent, imagePostId, thumbContent, thumbPostId, imagePath, deleteImagePath, transactionId);
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError("{0} RetrieveImageAndPost {1}: {2}; {3}; {4} threw exception {5}",
+                            DateTimeOffset.Now,
+                            transactionId,
+                            imagePath,
+                            imageUrl,
+                            thumbUrl,
+                            ex.Message);
+                        await clients.Client(connectionId).SendAsync("RetrieveImageAndPostExceptioned", ex.Message, transactionId);
+                    }
+                    finally
+                    {
+                        if (System.IO.File.Exists(tmpZip))
+                        {
+                            System.IO.File.Delete(tmpZip);
+                        }
+                    }
+                };
+                if (isSynchronous) //Run synchronously by 'await Task.Run(...'
+                {
+                    await runClosure(Clients, connectionId)();
+                }
+                else //Run asynchronously by assigning to discard (no await)
+                {
+                    _ = runClosure(Clients, connectionId)(); // see  https://docs.microsoft.com/en-us/dotnet/csharp/discards
+                }
+
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError("{0} RetrieveImageAndPost {1}: {2}; {3}; {4} threw exception {5}",
+                    DateTimeOffset.Now,
+                    transactionId,
+                    imagePath,
+                    imageUrl,
+                    thumbUrl,
+                    ex.Message);
+                await Clients.Caller.SendAsync("RetrieveImageAndPostExceptioned", ex.Message, transactionId);
+            }
+        }
+
+        #endregion
+
+        #region WatchForCreateInDir
+        public string WatchForCreateInDirBegin(string watchId, string watchInDir, Boolean del)
+        {
+            string watchInDirFullPath;
+
+            if (watchInDir == null || watchInDir.Trim().Length == 0)
+            {
+                string message = String.Format("watchId {0} watchInDir is blank.", watchId);
+                _logger.LogError(message);
+                throw new HubException(message);
+            }
+            else if (!Directory.Exists(watchInDir))
+            {
+                string message = String.Format("watchId {0} watchInDir {1} does not exist.", watchId, (Path.IsPathFullyQualified(watchInDir)) ? watchInDir : Path.GetFullPath(watchInDir));
+                _logger.LogError(message);
+                throw new HubException(message);
+            }
+            else
+            {
+                watchInDirFullPath = (Path.IsPathFullyQualified(watchInDir)) ? watchInDir : Path.GetFullPath(watchInDir);
+                string message = String.Format("watchId {0} watching in {1}.", watchId, watchInDirFullPath);
+            }
+
             string connectionId = Context.ConnectionId;
             FileSystemWatcher watcher = null;
             // remove existing watcher and re-create for this key so closure captures new clients and connectionId
-            if (watchers.ContainsKey(watchInDir))
+            if (watchers.ContainsKey(watchId))
             { 
-                watcher = watchers[watchInDir];
-                watchers.Remove(watchInDir);
+                watcher = watchers[watchId];
+                watchers.Remove(watchId);
                 watcher.Dispose();
                 watcher = null;
             }
             watcher = new FileSystemWatcher();
-            watcher.Path = watchInDir;
+            watcher.Path = watchInDirFullPath;
 
-            Func<IHubCallerClients, string, Boolean, Action<object, FileSystemEventArgs>> sendClosure = (IHubCallerClients clients, string connectionId, Boolean del) =>
+            Func<IHubCallerClients, string, string, Boolean, Action<object, FileSystemEventArgs>> sendClosure = (IHubCallerClients clients, string connectionId, string watchId, Boolean del) =>
                 (object source, FileSystemEventArgs e) =>
                     clients.Client(connectionId).SendAsync(
                         "CreatedInWatchDir",
+                        watchId,
                         e.FullPath,
                         (File.GetAttributes(e.FullPath) & FileAttributes.Directory) == FileAttributes.Directory,
                         del);
-            watcher.Created += new FileSystemEventHandler(sendClosure(Clients, connectionId, del));
+            watcher.Created += new FileSystemEventHandler(sendClosure(Clients, connectionId, watchId, del));
 
             watcher.EnableRaisingEvents = true;
-            watchers.Add(watchInDir, watcher);
+            watchers.Add(watchId, watcher);
+            return watchInDirFullPath;
         }
 
-        public void WatchForCreateInDirEnd(string watchInDir)
+        public void WatchForCreateInDirEnd(string watchId, string watchInDir)
         {
-            if (watchers.ContainsKey(watchInDir))
+            if (watchers.ContainsKey(watchId))
             {
-                FileSystemWatcher watcher = watchers[watchInDir];
-                watchers.Remove(watchInDir);
+                FileSystemWatcher watcher = watchers[watchId];
+                watchers.Remove(watchId);
                 watcher.Dispose();
                 watcher = null;
             }
