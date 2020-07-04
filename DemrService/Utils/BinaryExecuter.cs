@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Text;
+using System.IO;
 
 namespace DemrService.Utils
 {
@@ -9,7 +10,8 @@ namespace DemrService.Utils
     {
         public delegate void FinishedHandler(int exitCode, string stdio, string stderr, string transactionId, string invocationId);
 
-        protected string _binaryName = null;
+        protected string _binaryPath = null;
+        protected string _workingDirectory = null;
         protected string _args = null;
         protected string _transactionid = null;
         protected string _invocationId = null;
@@ -19,9 +21,10 @@ namespace DemrService.Utils
         private StringBuilder _error = null;
         
 
-        public BinaryExecuter(string binaryName, string args, string transactionId, string invocationId, FinishedHandler finishedHandler)
+        public BinaryExecuter(string binaryPath, string args, string transactionId, string invocationId, FinishedHandler finishedHandler)
         {
-            _binaryName = binaryName;
+            _binaryPath = binaryPath;
+            _workingDirectory = Path.GetDirectoryName(_binaryPath);
             _args = args;
             _transactionid = transactionId;
             _invocationId = invocationId;
@@ -35,12 +38,13 @@ namespace DemrService.Utils
                 {
                     StartInfo = new ProcessStartInfo
                     {
-                        FileName = _binaryName,
+                        FileName = _binaryPath,
                         Arguments = _args,
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
                         UseShellExecute = false,
                         CreateNoWindow = true,
+                        WorkingDirectory = _workingDirectory
                     }
                 };
 

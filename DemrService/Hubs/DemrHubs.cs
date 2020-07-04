@@ -151,7 +151,7 @@ namespace DemrService.Hubs
                 Func<IHubCallerClients, string, Func<Task>> runClosure = (IHubCallerClients clients, string connectionId) =>
                 async () =>
                 {
-                    string tmpZip = Guid.NewGuid().ToString();
+                    string tmpZip = Path.GetTempPath() + Guid.NewGuid().ToString();
                     try
                     {
                         string filePath = path;
@@ -218,7 +218,7 @@ namespace DemrService.Hubs
                             path,
                             isDir.ToString(),
                             url,
-                            ex.Message);
+                            ex.ToString());
                         await clients.Client(connectionId).SendAsync("RetrieveFileAndPostExceptioned", ex.Message, transactionId);
                     }
                     finally
@@ -493,7 +493,7 @@ namespace DemrService.Hubs
                     imagePath,
                     imageUrl,
                     thumbUrl,
-                    ex.Message);
+                    ex.ToString());
                 await Clients.Caller.SendAsync("RetrieveImageAndPostExceptioned", ex.Message, transactionId);
             }
         }
@@ -501,7 +501,7 @@ namespace DemrService.Hubs
         #endregion
 
         #region WatchForCreateInDir
-        public string WatchForCreateInDirBegin(string watchId, string watchInDir, Boolean del)
+        public string WatchForCreateInDirBegin(string watchId, string watchInDir, Boolean del, Boolean disableCreatedEvent, Boolean enableRenamedEvent)
         {
             string watchInDirFullPath;
 
@@ -536,15 +536,83 @@ namespace DemrService.Hubs
             watcher = new FileSystemWatcher();
             watcher.Path = watchInDirFullPath;
 
-            Func<IHubCallerClients, string, string, Boolean, Action<object, FileSystemEventArgs>> sendClosure = (IHubCallerClients clients, string connectionId, string watchId, Boolean del) =>
+            Func<IHubCallerClients, string, string, Boolean, Action<object, FileSystemEventArgs>> createdHandlerClosure = (IHubCallerClients clients, string connectionId, string watchId, Boolean del) =>
                 (object source, FileSystemEventArgs e) =>
-                    clients.Client(connectionId).SendAsync(
-                        "CreatedInWatchDir",
-                        watchId,
-                        e.FullPath,
-                        (File.GetAttributes(e.FullPath) & FileAttributes.Directory) == FileAttributes.Directory,
-                        del);
-            watcher.Created += new FileSystemEventHandler(sendClosure(Clients, connectionId, watchId, del));
+                {
+                    try
+                    {
+                        FileAttributes fileAttributes = File.GetAttributes(e.FullPath);
+                        if ( ((fileAttributes & FileAttributes.Hidden) == FileAttributes.Hidden) || ((fileAttributes & FileAttributes.Offline) == FileAttributes.Offline) || ((fileAttributes & FileAttributes.System) == FileAttributes.System))
+                        {
+                            _logger.LogDebug("{0} WatchForCreateInDirBegin {1}: Created handler: file {2} has FileAttributes(s) {3} (hidden, offline, or system). Ignoring file system watch event.",
+                                DateTimeOffset.Now,
+                                watchId,
+                                e.FullPath,
+                                fileAttributes.ToString()
+                            );
+                            return;
+                        }
+
+                        clients.Client(connectionId).SendAsync(
+                            "CreatedInWatchDir",
+                            watchId,
+                            e.FullPath,
+                            (fileAttributes & FileAttributes.Directory) == FileAttributes.Directory,
+                            del);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError("{0} WatchForCreateInDirBegin {1}: Created handler: path {2} threw exception {3} in FileSystemEventHandler. Ignoring watch event.",
+                            DateTimeOffset.Now,
+                            watchId,
+                            e.FullPath,
+                            ex.ToString());
+                    }
+                };
+            if (!disableCreatedEvent)
+            {
+                watcher.Created += new FileSystemEventHandler(createdHandlerClosure(Clients, connectionId, watchId, del));
+            }
+
+            Func<IHubCallerClients, string, string, Boolean, Action<object, RenamedEventArgs>> renamedHandlerClosure = (IHubCallerClients clients, string connectionId, string watchId, Boolean del) =>
+                (object source, RenamedEventArgs e) =>
+                {
+                    try
+                    {
+                        FileAttributes fileAttributes = File.GetAttributes(e.FullPath);
+                        if (((fileAttributes & FileAttributes.Hidden) == FileAttributes.Hidden) || ((fileAttributes & FileAttributes.Offline) == FileAttributes.Offline) || ((fileAttributes & FileAttributes.System) == FileAttributes.System))
+                        {
+                            _logger.LogDebug("{0} WatchForCreateInDirBegin {1}: Renamed handler: path {2} renamed to {3} has FileAttributes(s) {4} (hidden, offline, or system). Ignoring file system watch event.",
+                                DateTimeOffset.Now,
+                                watchId,
+                                e.OldFullPath,
+                                e.FullPath,
+                                fileAttributes.ToString()
+                            );
+                            return;
+                        }
+
+                        clients.Client(connectionId).SendAsync(
+                            "CreatedInWatchDir",
+                            watchId,
+                            e.FullPath,
+                            (fileAttributes & FileAttributes.Directory) == FileAttributes.Directory,
+                            del);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError("{0} WatchForCreateInDirBegin {1}: Renamed handler: path {2} renamed to {3} threw exception {4} in FileSystemEventHandler. Ignoring watch event.",
+                            DateTimeOffset.Now,
+                            watchId,
+                            e.OldFullPath,
+                            e.FullPath,
+                            ex.ToString());
+                    }
+                };
+            if (enableRenamedEvent)
+            {
+                watcher.Renamed += new RenamedEventHandler(renamedHandlerClosure(Clients, connectionId, watchId, del));
+            }
 
             watcher.EnableRaisingEvents = true;
             watchers.Add(watchId, watcher);

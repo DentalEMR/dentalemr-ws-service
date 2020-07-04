@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 
 namespace TestConsoleApp
 {
@@ -7,7 +8,7 @@ namespace TestConsoleApp
         static void Main(string[] args)
         {
             System.Threading.Thread.Sleep(10000);
-            Console.WriteLine("TestConsoleApp called with args: " + string.Join(",", args));
+            Console.WriteLine($"TestConsoleApp called, running in working directory {Directory.GetCurrentDirectory()}, with args: {string.Join(",", args)}");
         }
     }
 }
