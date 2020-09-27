@@ -4,6 +4,12 @@
     <TargetFramework>netcoreapp3.1</TargetFramework>
     <UserSecretsId>dotnet-DemrService-96332CA3-39D2-440B-A7B4-9FDA97BA5BA9</UserSecretsId>
     <RuntimeIdentifier>win7-x64</RuntimeIdentifier>
+    <Authors>Dental EMR, Inc.</Authors>
+    <Company>Dental EMR, Inc.</Company>
+    <Copyright>(c) Dental EMR, Inc., All Rights Reserved.</Copyright>
+    <PackageReleaseNotes></PackageReleaseNotes>
+    <Description></Description>
+    <Product>DemrService</Product>
   </PropertyGroup>
 
   <ItemGroup>
