@@ -40,13 +40,41 @@ Allows origins:
 - `HTTP GET: /api/RetrieveFile?path=<PATH>&isdir=false` where `path` is path of file to return if `isdir` is `false` or directory to zip and return if `isdir` is `true`.
 
 
-# Installation
+# Build & Deployment
 
-    1. From within Visual Studio, publish 'DemrService' project AND 'demrservice.pfx' to 'publish' folder.
-    2. Zip / unzip 'publish' folder onto integration Windows computer.
-    3. Double click 'demrservice.pfx' on integration computer and install certificate (required by Chrome but not Firefox for some reason)
-    4. In both Chrome and Firefox, navigate a browser tab to https://127.0.0.1:5001 and in warning select advanced and add exception.
-    5. Double click 'demrservice.exe' to run in console window. Ctrl-c exists program. Can be installed as a Windows service but this hasn't been fiddled with yet.
+## Build Commands
+
+### Single-File Self-Contained Deployment
+**Output**: Single `DemrService` executable (~95MB)
+**Requirements**: No runtime needed, single file for easy distribution
+
+### Cross-Platform Builds
+```bash
+# For Windows
+dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+
+# For Linux
+dotnet publish -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true
+
+# For macOS
+dotnet publish -c Release -r osx-x64 --self-contained true -p:PublishSingleFile=true
+```
+
+## Installation
+
+### Automated Installation (Recommended)
+1. Build using one of the commands above
+2. For single-file: Copy the `DemrService` executable to target machine
+3. For multi-file: Copy entire `publish/` folder to target machine
+4. Copy `demrservice.pfx` certificate file
+5. Install certificate and run executable
+
+### Manual Installation (Legacy)
+1. From within Visual Studio, publish 'DemrService' project AND 'demrservice.pfx' to 'publish' folder.
+2. Zip / unzip 'publish' folder onto integration computer.
+3. Double click 'demrservice.pfx' on integration computer and install certificate (required by Chrome but not Firefox for some reason)
+4. In both Chrome and Firefox, navigate a browser tab to https://127.0.0.1:5001 and in warning select advanced and add exception.
+5. Double click 'DemrService' executable to run in console window. Ctrl-c exits program. Can be installed as a service but this hasn't been configured yet.
 
 # Test applications
 
